@@ -1,0 +1,30 @@
+# Ignorer tous les fichiers et dossiers par défaut
+*
+*/
+
+# Ne pas ignorer les scripts Python
+!*.py
+!README.md
+!.gitignore
+
+# Ignorer les fichiers Python spécifiques comme les caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Ignorer les environnements virtuels
+venv/
+env/
+.env/
+
+# Ignorer les fichiers de IDE
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Ignorer les résultats générés
+results/
+benchmark_results/
+benchmark_analysis/
+test_results/
