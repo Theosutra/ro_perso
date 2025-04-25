@@ -11,7 +11,7 @@ import numpy as np
 import random
 import math
 from typing import Dict, List, Tuple, Set, Optional, Union
-from graph_generator import TSPGraphGenerator
+from vrp_graph_generator import TSPGraphGenerator
 
 
 class VRPGraphGenerator:
