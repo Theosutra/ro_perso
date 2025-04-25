@@ -1,7 +1,7 @@
 """
-analyze_benchmark.py
+vrp_analyze_benchmark.py
 
-Script pour analyser les résultats des benchmarks et générer des visualisations.
+Script pour analyser les résultats des benchmarks VRP et générer des visualisations.
 """
 
 import os
@@ -42,7 +42,7 @@ def create_analysis_directory(base_dir='benchmark_analysis'):
         Chemin du répertoire créé
     """
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    analysis_dir = os.path.join(base_dir, f"analysis_{timestamp}")
+    analysis_dir = os.path.join(base_dir, f"vrp_analysis_{timestamp}")
     
     if not os.path.exists(analysis_dir):
         os.makedirs(analysis_dir)
@@ -61,7 +61,7 @@ def analyze_by_city_size(df, output_dir):
     print("\nAnalyse de l'impact de la taille des villes...")
     
     # Créer un subplot avec plusieurs métriques
-    fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+    fig, axes = plt.subplots(3, 2, figsize=(15, 18))
     fig.suptitle('Impact de la taille des villes sur les performances', fontsize=16)
     
     # Coût total vs taille des villes
@@ -87,8 +87,13 @@ def analyze_by_city_size(df, output_dir):
     cap_respect_rates = [df[df['num_cities'] == size]['capacity_respected'].mean() * 100 
                         for size in city_sizes]
     
-    axes[1, 0].bar(np.array(range(len(city_sizes))) - 0.2, dep_respect_rates, width=0.4, label='Dépendances')
-    axes[1, 0].bar(np.array(range(len(city_sizes))) + 0.2, cap_respect_rates, width=0.4, label='Capacité')
+    # Taux de visite de toutes les villes
+    visit_rates = [df[df['num_cities'] == size]['all_cities_visited'].mean() * 100 
+                  for size in city_sizes]
+    
+    axes[1, 0].bar(np.array(range(len(city_sizes))) - 0.3, dep_respect_rates, width=0.25, label='Dépendances')
+    axes[1, 0].bar(np.array(range(len(city_sizes))), cap_respect_rates, width=0.25, label='Capacité')
+    axes[1, 0].bar(np.array(range(len(city_sizes))) + 0.3, visit_rates, width=0.25, label='Visites')
     axes[1, 0].set_xticks(range(len(city_sizes)))
     axes[1, 0].set_xticklabels(city_sizes)
     axes[1, 0].set_title('Taux de respect des contraintes par taille de ville')
@@ -103,8 +108,71 @@ def analyze_by_city_size(df, output_dir):
     axes[1, 1].set_xlabel('Nombre de villes')
     axes[1, 1].set_ylabel('Nombre d\'itérations')
     
+    # Nombre de véhicules utilisés vs taille des villes et nombre de véhicules disponibles
+    df_grouped = df.groupby(['num_cities', 'num_vehicles'])['vehicles_used'].mean().reset_index()
+    sns.barplot(x='num_cities', y='vehicles_used', hue='num_vehicles', data=df_grouped, ax=axes[2, 0])
+    axes[2, 0].set_title('Véhicules utilisés par taille de ville')
+    axes[2, 0].set_xlabel('Nombre de villes')
+    axes[2, 0].set_ylabel('Nombre moyen de véhicules utilisés')
+    
+    # Longueur moyenne des routes vs taille des villes
+    sns.boxplot(x='num_cities', y='avg_route_length', data=df, ax=axes[2, 1])
+    axes[2, 1].set_title('Longueur moyenne des routes par taille de ville')
+    axes[2, 1].set_xlabel('Nombre de villes')
+    axes[2, 1].set_ylabel('Nombre moyen de villes par route')
+    
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     plt.savefig(os.path.join(output_dir, 'city_size_analysis.png'), dpi=300)
+    plt.close()
+
+
+def analyze_fleet_size(df, output_dir):
+    """
+    Analyse l'impact du nombre de véhicules sur les performances.
+    
+    Args:
+        df: DataFrame contenant les résultats
+        output_dir: Répertoire de sortie pour les visualisations
+    """
+    print("\nAnalyse de l'impact de la taille de la flotte...")
+    
+    # Créer un subplot avec plusieurs métriques
+    fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+    fig.suptitle('Impact du nombre de véhicules sur les performances', fontsize=16)
+    
+    # Coût total vs nombre de véhicules
+    sns.boxplot(x='num_vehicles', y='total_cost', data=df, ax=axes[0, 0])
+    axes[0, 0].set_title('Coût total par nombre de véhicules')
+    axes[0, 0].set_xlabel('Nombre de véhicules disponibles')
+    axes[0, 0].set_ylabel('Coût total')
+    
+    # Ratio d'utilisation des véhicules
+    df['vehicle_utilization'] = df['vehicles_used'] / df['num_vehicles'] * 100
+    sns.boxplot(x='num_vehicles', y='vehicle_utilization', data=df, ax=axes[0, 1])
+    axes[0, 1].set_title('Taux d\'utilisation des véhicules')
+    axes[0, 1].set_xlabel('Nombre de véhicules disponibles')
+    axes[0, 1].set_ylabel('Taux d\'utilisation (%)')
+    axes[0, 1].set_ylim(0, 100)
+    
+    # Longueur moyenne des routes vs nombre de véhicules
+    sns.boxplot(x='num_vehicles', y='avg_route_length', data=df, ax=axes[1, 0])
+    axes[1, 0].set_title('Longueur moyenne des routes par nombre de véhicules')
+    axes[1, 0].set_xlabel('Nombre de véhicules disponibles')
+    axes[1, 0].set_ylabel('Nombre moyen de villes par route')
+    
+    # Impact combiné du nombre de véhicules et de la taille des villes sur le coût
+    heatmap_data = pd.pivot_table(df, values='total_cost', 
+                                 index='num_cities',
+                                 columns='num_vehicles',
+                                 aggfunc='mean')
+    
+    sns.heatmap(heatmap_data, annot=True, fmt='.1f', cmap='YlGnBu', ax=axes[1, 1])
+    axes[1, 1].set_title('Coût moyen par configuration')
+    axes[1, 1].set_xlabel('Nombre de véhicules')
+    axes[1, 1].set_ylabel('Nombre de villes')
+    
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    plt.savefig(os.path.join(output_dir, 'fleet_size_analysis.png'), dpi=300)
     plt.close()
 
 
@@ -133,31 +201,28 @@ def analyze_capacity_constraints(df, output_dir):
     axes[0, 0].set_ylabel('Taux de respect (%)')
     axes[0, 0].set_ylim(0, 100)
     
-    # Relation entre charge totale et capacité
-    sns.scatterplot(x='total_load', y='capacity_respected', 
-                   hue='vehicle_capacity', data=df, ax=axes[0, 1])
-    axes[0, 1].set_title('Respect de la capacité vs charge totale')
-    axes[0, 1].set_xlabel('Charge totale')
-    axes[0, 1].set_ylabel('Capacité respectée (1=Oui, 0=Non)')
+    # Impact de la capacité sur le nombre de véhicules utilisés
+    sns.boxplot(x='vehicle_capacity', y='vehicles_used', data=df, ax=axes[0, 1])
+    axes[0, 1].set_title('Nombre de véhicules utilisés vs capacité')
+    axes[0, 1].set_xlabel('Capacité du véhicule')
+    axes[0, 1].set_ylabel('Nombre de véhicules utilisés')
     
-    # Charge maximale vs capacité du véhicule pour les solutions réussies
-    successful_df = df[df['capacity_respected'] == True]
-    if not successful_df.empty:
-        sns.boxplot(x='vehicle_capacity', y='max_load', data=successful_df, ax=axes[1, 0])
-        axes[1, 0].set_title('Charge maximale pour les solutions respectant la capacité')
-        axes[1, 0].set_xlabel('Capacité du véhicule')
-        axes[1, 0].set_ylabel('Charge maximale')
-    else:
-        axes[1, 0].text(0.5, 0.5, 'Aucune solution ne respecte la contrainte de capacité', 
-                       ha='center', va='center')
+    # Impact de la capacité sur la longueur moyenne des routes
+    sns.boxplot(x='vehicle_capacity', y='avg_route_length', data=df, ax=axes[1, 0])
+    axes[1, 0].set_title('Longueur moyenne des routes vs capacité')
+    axes[1, 0].set_xlabel('Capacité du véhicule')
+    axes[1, 0].set_ylabel('Nombre moyen de villes par route')
     
-    # Ratio de charge (max_load/vehicle_capacity) vs nombre de villes
-    df['load_ratio'] = df['max_load'] / df['vehicle_capacity']
-    sns.boxplot(x='num_cities', y='load_ratio', data=df, ax=axes[1, 1])
-    axes[1, 1].set_title('Ratio de charge (max/capacité) vs nombre de villes')
-    axes[1, 1].set_xlabel('Nombre de villes')
-    axes[1, 1].set_ylabel('Ratio de charge')
-    axes[1, 1].axhline(y=1.0, color='r', linestyle='--')
+    # Impact combiné de la capacité et du nombre de véhicules sur le respect des contraintes
+    heatmap_data = pd.pivot_table(df, values='capacity_respected', 
+                                 index='vehicle_capacity',
+                                 columns='num_vehicles',
+                                 aggfunc='mean')
+    
+    sns.heatmap(heatmap_data, annot=True, fmt='.2f', cmap='YlGnBu', ax=axes[1, 1])
+    axes[1, 1].set_title('Taux de respect de la capacité')
+    axes[1, 1].set_xlabel('Nombre de véhicules')
+    axes[1, 1].set_ylabel('Capacité du véhicule')
     
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     plt.savefig(os.path.join(output_dir, 'capacity_analysis.png'), dpi=300)
@@ -201,8 +266,13 @@ def analyze_algorithm_parameters(df, output_dir):
     cap_respect_rates = [df[df['population_size'] == size]['capacity_respected'].mean() * 100 
                         for size in pop_sizes]
     
-    axes[1, 0].bar(np.array(range(len(pop_sizes))) - 0.2, dep_respect_rates, width=0.4, label='Dépendances')
-    axes[1, 0].bar(np.array(range(len(pop_sizes))) + 0.2, cap_respect_rates, width=0.4, label='Capacité')
+    # Taux de visite de toutes les villes
+    visit_rates = [df[df['population_size'] == size]['all_cities_visited'].mean() * 100 
+                  for size in pop_sizes]
+    
+    axes[1, 0].bar(np.array(range(len(pop_sizes))) - 0.3, dep_respect_rates, width=0.25, label='Dépendances')
+    axes[1, 0].bar(np.array(range(len(pop_sizes))), cap_respect_rates, width=0.25, label='Capacité')
+    axes[1, 0].bar(np.array(range(len(pop_sizes))) + 0.3, visit_rates, width=0.25, label='Visites')
     axes[1, 0].set_xticks(range(len(pop_sizes)))
     axes[1, 0].set_xticklabels(pop_sizes)
     axes[1, 0].set_title('Taux de respect des contraintes vs taille de population')
@@ -262,22 +332,72 @@ def analyze_dependencies_and_blocking(df, output_dir):
     axes[1, 0].set_xlabel('Ratio de blocage')
     axes[1, 0].set_ylabel('Ratio de dépendance')
     
-    # Impact combiné sur le temps d'exécution
+    # Impact combiné sur le nombre de véhicules utilisés
     heatmap_data = pd.pivot_table(
         df, 
-        values='execution_time', 
+        values='vehicles_used', 
         index='dependency_ratio',
         columns='blocking_ratio',
         aggfunc='mean'
     )
     
     sns.heatmap(heatmap_data, annot=True, fmt='.2f', cmap='YlOrRd', ax=axes[1, 1])
-    axes[1, 1].set_title('Temps d\'exécution moyen (s)')
+    axes[1, 1].set_title('Nombre moyen de véhicules utilisés')
     axes[1, 1].set_xlabel('Ratio de blocage')
     axes[1, 1].set_ylabel('Ratio de dépendance')
     
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     plt.savefig(os.path.join(output_dir, 'dependencies_blocking_analysis.png'), dpi=300)
+    plt.close()
+
+
+def analyze_route_distribution(df, output_dir):
+    """
+    Analyse la distribution des routes et la répartition des villes entre véhicules.
+    
+    Args:
+        df: DataFrame contenant les résultats
+        output_dir: Répertoire de sortie pour les visualisations
+    """
+    print("\nAnalyse de la distribution des routes...")
+    
+    # Créer un subplot
+    fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+    fig.suptitle('Analyse de la distribution des routes entre véhicules', fontsize=16)
+    
+    # Écart-type de la longueur des routes vs nombre de véhicules
+    # Utiliser max_route_length - min_route_length comme indicateur d'équilibre
+    df['route_length_range'] = df['max_route_length'] - df['min_route_length']
+    
+    sns.boxplot(x='num_vehicles', y='route_length_range', data=df, ax=axes[0, 0])
+    axes[0, 0].set_title('Écart de longueur des routes par nombre de véhicules')
+    axes[0, 0].set_xlabel('Nombre de véhicules')
+    axes[0, 0].set_ylabel('Écart (max - min) du nombre de villes')
+    
+    # Relation entre longueur moyenne des routes et coût total
+    sns.scatterplot(x='avg_route_length', y='total_cost', 
+                   hue='num_vehicles', size='num_cities',
+                   data=df, ax=axes[0, 1])
+    axes[0, 1].set_title('Relation entre longueur des routes et coût')
+    axes[0, 1].set_xlabel('Longueur moyenne des routes')
+    axes[0, 1].set_ylabel('Coût total')
+    
+    # Distribution des longueurs de routes
+    sns.histplot(df['avg_route_length'], kde=True, ax=axes[1, 0])
+    axes[1, 0].set_title('Distribution des longueurs moyennes de routes')
+    axes[1, 0].set_xlabel('Longueur moyenne des routes')
+    axes[1, 0].set_ylabel('Fréquence')
+    
+    # Ratio villes/véhicules vs nombre de véhicules utilisés
+    df['cities_per_vehicle_ratio'] = df['num_cities'] / df['vehicles_used']
+    
+    sns.boxplot(x='num_vehicles', y='cities_per_vehicle_ratio', data=df, ax=axes[1, 1])
+    axes[1, 1].set_title('Ratio villes/véhicules par taille de flotte')
+    axes[1, 1].set_xlabel('Nombre de véhicules disponibles')
+    axes[1, 1].set_ylabel('Villes par véhicule utilisé')
+    
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    plt.savefig(os.path.join(output_dir, 'route_distribution_analysis.png'), dpi=300)
     plt.close()
 
 
@@ -300,7 +420,10 @@ def generate_summary_statistics(df, output_dir):
         'avg_execution_time': df['execution_time'].mean(),
         'avg_iterations': df['iterations'].mean(),
         'dependencies_respected_rate': df['dependencies_respected'].mean() * 100,
-        'capacity_respected_rate': df['capacity_respected'].mean() * 100
+        'capacity_respected_rate': df['capacity_respected'].mean() * 100,
+        'all_cities_visited_rate': df['all_cities_visited'].mean() * 100,
+        'avg_vehicles_used': df['vehicles_used'].mean(),
+        'avg_route_length': df['avg_route_length'].mean()
     }
     
     # Créer un DataFrame pour ces statistiques
@@ -313,12 +436,16 @@ def generate_summary_statistics(df, output_dir):
         'execution_time': ['mean', 'min', 'max'],
         'iterations': ['mean', 'min', 'max'],
         'dependencies_respected': ['mean'],
-        'capacity_respected': ['mean']
+        'capacity_respected': ['mean'],
+        'all_cities_visited': ['mean'],
+        'vehicles_used': ['mean', 'min', 'max'],
+        'avg_route_length': ['mean']
     })
     
     # Convertir les taux en pourcentages
     city_stats[('dependencies_respected', 'mean')] *= 100
     city_stats[('capacity_respected', 'mean')] *= 100
+    city_stats[('all_cities_visited', 'mean')] *= 100
     
     # Renommer les colonnes pour plus de clarté
     city_stats.columns = ['_'.join(col).strip() for col in city_stats.columns.values]
@@ -326,40 +453,68 @@ def generate_summary_statistics(df, output_dir):
     # Exporter en CSV
     city_stats.to_csv(os.path.join(output_dir, 'city_size_statistics.csv'))
     
+    # Statistiques par configuration de flotte
+    fleet_stats = df.groupby(['num_vehicles', 'vehicle_capacity']).agg({
+        'total_cost': ['mean', 'min', 'std'],
+        'execution_time': ['mean'],
+        'vehicles_used': ['mean', 'min', 'max'],
+        'avg_route_length': ['mean'],
+        'dependencies_respected': ['mean'],
+        'capacity_respected': ['mean'],
+        'all_cities_visited': ['mean']
+    })
+    
+    # Convertir les taux en pourcentages
+    fleet_stats[('dependencies_respected', 'mean')] *= 100
+    fleet_stats[('capacity_respected', 'mean')] *= 100
+    fleet_stats[('all_cities_visited', 'mean')] *= 100
+    
+    # Renommer les colonnes
+    fleet_stats.columns = ['_'.join(col).strip() for col in fleet_stats.columns.values]
+    
+    # Exporter en CSV
+    fleet_stats.to_csv(os.path.join(output_dir, 'fleet_statistics.csv'))
+    
+    # Statistiques sur les contraintes
+    constraints_stats = df.groupby(['dependency_ratio', 'blocking_ratio']).agg({
+        'dependencies_respected': ['mean'],
+        'capacity_respected': ['mean'],
+        'all_cities_visited': ['mean'],
+        'total_cost': ['mean'],
+        'vehicles_used': ['mean']
+    })
+    
+    # Convertir les taux en pourcentages
+    constraints_stats[('dependencies_respected', 'mean')] *= 100
+    constraints_stats[('capacity_respected', 'mean')] *= 100
+    constraints_stats[('all_cities_visited', 'mean')] *= 100
+    
+    # Renommer les colonnes
+    constraints_stats.columns = ['_'.join(col).strip() for col in constraints_stats.columns.values]
+    
+    # Exporter en CSV
+    constraints_stats.to_csv(os.path.join(output_dir, 'constraints_statistics.csv'))
+    
     # Statistiques par configuration d'algorithme
     algo_stats = df.groupby(['population_size', 'mutation_rate']).agg({
         'total_cost': ['mean', 'min', 'std'],
         'execution_time': ['mean'],
         'iterations': ['mean'],
         'dependencies_respected': ['mean'],
-        'capacity_respected': ['mean']
+        'capacity_respected': ['mean'],
+        'all_cities_visited': ['mean']
     })
     
     # Convertir les taux en pourcentages
     algo_stats[('dependencies_respected', 'mean')] *= 100
     algo_stats[('capacity_respected', 'mean')] *= 100
+    algo_stats[('all_cities_visited', 'mean')] *= 100
     
     # Renommer les colonnes
     algo_stats.columns = ['_'.join(col).strip() for col in algo_stats.columns.values]
     
     # Exporter en CSV
     algo_stats.to_csv(os.path.join(output_dir, 'algorithm_statistics.csv'))
-    
-    # Statistiques sur les contraintes de capacité
-    capacity_stats = df.groupby('vehicle_capacity').agg({
-        'capacity_respected': ['mean'],
-        'total_load': ['mean', 'min', 'max'],
-        'max_load': ['mean', 'min', 'max']
-    })
-    
-    # Convertir les taux en pourcentages
-    capacity_stats[('capacity_respected', 'mean')] *= 100
-    
-    # Renommer les colonnes
-    capacity_stats.columns = ['_'.join(col).strip() for col in capacity_stats.columns.values]
-    
-    # Exporter en CSV
-    capacity_stats.to_csv(os.path.join(output_dir, 'capacity_statistics.csv'))
     
     print(f"Statistiques résumées exportées dans {output_dir}")
 
@@ -371,12 +526,16 @@ def find_best_solutions(df, output_dir):
     Args:
         df: DataFrame contenant les résultats
         output_dir: Répertoire de sortie pour les fichiers
+        
+    Returns:
+        DataFrame contenant les meilleures solutions
     """
     print("\nRecherche des meilleures solutions...")
     
-    # Filtrer les solutions qui respectent les deux contraintes
+    # Filtrer les solutions qui respectent toutes les contraintes
     valid_solutions = df[(df['dependencies_respected'] == True) & 
-                        (df['capacity_respected'] == True)]
+                        (df['capacity_respected'] == True) &
+                        (df['all_cities_visited'] == True)]
     
     if valid_solutions.empty:
         print("Aucune solution ne respecte toutes les contraintes.")
@@ -395,21 +554,26 @@ def find_best_solutions(df, output_dir):
     for i, row in best_solutions.head(3).iterrows():
         print(f"#{i+1}: Coût={row['total_cost']:.2f}, "
               f"Villes={row['num_cities']}, "
+              f"Véhicules={row['vehicles_used']}/{row['num_vehicles']}, "
               f"Population={row['population_size']}, "
               f"Mutation={row['mutation_rate']}, "
               f"Dépendances={'Oui' if row['dependencies_respected'] else 'Non'}, "
-              f"Capacité={'Oui' if row['capacity_respected'] else 'Non'}")
+              f"Capacité={'Oui' if row['capacity_respected'] else 'Non'}, "
+              f"Toutes villes visitées={'Oui' if row['all_cities_visited'] else 'Non'}")
     
     return best_solutions
 
 
 def run_analysis(csv_file, output_dir=None):
     """
-    Exécute l'analyse complète des résultats de benchmark.
+    Exécute l'analyse complète des résultats de benchmark VRP.
     
     Args:
         csv_file: Chemin vers le fichier CSV de résultats
         output_dir: Répertoire de sortie pour les analyses (optionnel)
+        
+    Returns:
+        Tuple (df, best_solutions) contenant les données et les meilleures solutions
     """
     # Charger les données
     df = load_benchmark_results(csv_file)
@@ -420,13 +584,15 @@ def run_analysis(csv_file, output_dir=None):
     elif not os.path.exists(output_dir):
         os.makedirs(output_dir)
     
-    print(f"Analyse des résultats en cours, sortie dans {output_dir}...")
+    print(f"Analyse des résultats VRP en cours, sortie dans {output_dir}...")
     
     # Effectuer les différentes analyses
     analyze_by_city_size(df, output_dir)
+    analyze_fleet_size(df, output_dir)
     analyze_capacity_constraints(df, output_dir)
     analyze_algorithm_parameters(df, output_dir)
     analyze_dependencies_and_blocking(df, output_dir)
+    analyze_route_distribution(df, output_dir)
     
     # Générer les statistiques résumées
     generate_summary_statistics(df, output_dir)
@@ -440,7 +606,7 @@ def run_analysis(csv_file, output_dir=None):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Analyse des résultats de benchmark TSP')
+    parser = argparse.ArgumentParser(description='Analyse des résultats de benchmark VRP')
     
     parser.add_argument('csv_file', type=str, help='Fichier CSV contenant les résultats')
     parser.add_argument('--output_dir', type=str, default=None,
